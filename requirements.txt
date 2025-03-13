@@ -1,0 +1,4 @@
+PySimpleGUI
+yt-dlp>=2023.3.4
+customtkinter>=5.1.2
+PyInstaller
