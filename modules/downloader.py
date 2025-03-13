@@ -143,50 +143,118 @@ class YouTubeDownloader:
             self.logger.error(f"音频下载失败: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def download_subtitles(self, url: str, language: str = 'en', save_path: str = None,
-                          progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
-        """
-        下载字幕
-        
-        Args:
-            url: 视频链接
-            language: 字幕语言代码 (en, zh-CN, ja, ko, etc.)
-            save_path: 保存目录
-            progress_callback: 进度回调函数，接收参数(percent, speed, eta)
-            
-        Returns:
-            包含下载信息的字典
-        """
-        save_path = self._get_save_path(save_path)
-        os.makedirs(save_path, exist_ok=True)
-        
-        ydl_opts = {
-            'skip_download': True,  # 不下载视频
-            'writesubtitles': True,
-            'writeautomaticsub': True,  # 如果没有字幕，尝试自动生成
-            'subtitleslangs': [language],
-            'subtitlesformat': 'srt',
-            'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),
-            'progress_hooks': [self._progress_hook(progress_callback)],
-            'quiet': True,
-            'no_warnings': True,
-        }
-        
+    def download_subtitles(self, url: str, language: str = 'zh-CN', save_path: Optional[str] = None, 
+                      progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                filename_base = os.path.splitext(ydl.prepare_filename(info))[0]
-                subtitle_filename = f"{filename_base}.{language}.srt"
+            save_path = self._get_save_path(save_path)
+            os.makedirs(save_path, exist_ok=True)  # 确保目录存在
+            
+            # 先获取视频信息，检查可用的字幕
+            info_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,  # 只提取元数据，不下载视频
+            }
+            
+            with yt_dlp.YoutubeDL(info_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                # 获取所有可用的字幕语言
+                available_subs = set()
+                if 'subtitles' in info:
+                    available_subs.update(info['subtitles'].keys())
+                if 'automatic_captions' in info:
+                    available_subs.update(info['automatic_captions'].keys())
+                
+                print(f"可用的字幕语言: {available_subs}")  # 调试信息
+                
+                # 检查中文字幕的各种可能的语言代码
+                chinese_codes = ['zh', 'zh-CN', 'zh-Hans', 'zh-Hant', 'zh-TW']
+                target_language = None
+                
+                # 如果请求的是中文字幕，检查所有可能的中文代码
+                if language.startswith('zh'):
+                    for code in chinese_codes:
+                        if code in available_subs:
+                            target_language = code
+                            break
+                else:
+                    # 非中文字幕直接检查
+                    if language in available_subs:
+                        target_language = language
+                
+                # 如果没找到目标语言但有英文字幕，使用英文
+                if not target_language and 'en' in available_subs:
+                    target_language = 'en'
+                
+                if not target_language:
+                    return {
+                        'success': False,
+                        'error': f'该视频既没有{language}语言的字幕，也没有英文字幕'
+                    }
+                
+                # 设置下载选项
+                ydl_opts = {
+                    'skip_download': True,  # 确保不下载视频
+                    'writesubtitles': True,
+                    'writeautomaticsub': True,
+                    'subtitleslangs': [target_language],
+                    'subtitlesformat': 'vtt',
+                    'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),  # 确保使用正确的保存路径
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                
+                # 下载字幕
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                
+                # 检查下载的文件
+                for filename in os.listdir(save_path):
+                    if filename.endswith(f'.{target_language}.vtt'):
+                        subtitle_type = 'auto' if target_language in info.get('automatic_captions', {}) else 'manual'
+                        return {
+                            'success': True,
+                            'title': info.get('title', '未知标题'),
+                            'filename': filename,
+                            'subtitle_type': subtitle_type,
+                            'language': target_language
+                        }
                 
                 return {
-                    'title': info.get('title', '未知标题'),
-                    'filename': subtitle_filename,
-                    'language': language,
-                    'success': True
+                    'success': False,
+                    'error': '字幕下载失败'
                 }
+                
         except Exception as e:
-            self.logger.error(f"字幕下载失败: {str(e)}")
-            return {'success': False, 'error': str(e)}
+            print(f"字幕下载出错: {str(e)}")  # 添加错误输出
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _progress_hook(self, d: Dict[str, Any], callback: Optional[Callable] = None):
+        """处理下载进度回调"""
+        if callback and 'downloaded_bytes' in d:
+            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            if total_bytes > 0:
+                percent = (d['downloaded_bytes'] / total_bytes) * 100
+            else:
+                percent = 0
+                
+            speed = d.get('speed', 0)
+            if speed:
+                speed_str = f"{speed/1024/1024:.1f} MB/s"
+            else:
+                speed_str = "未知"
+                
+            eta = d.get('eta', 0)
+            if eta:
+                eta_str = f"{eta}秒"
+            else:
+                eta_str = "未知"
+                
+            callback(percent, speed_str, eta_str)
     
     def cancel_download(self):
         """取消当前下载任务"""
