@@ -17,7 +17,7 @@ class YouTubeDownloader:
             default_save_path: 默认保存路径
         """
         self.default_save_path = os.path.expanduser(default_save_path)
-        self.current_download = None
+        # 移除 self.current_download
         self.logger = logging.getLogger(__name__) 
     
     def _get_save_path(self, save_path: Optional[str] = None) -> str:
@@ -50,6 +50,7 @@ class YouTubeDownloader:
         
         return hook
     
+    # 修复 _progress_hook 参数问题
     def download_video(self, url: str, resolution: str = 'best', save_path: str = None, 
                       progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
         """
@@ -77,7 +78,7 @@ class YouTubeDownloader:
         ydl_opts = {
             'format': format_spec,
             'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),
-            'progress_hooks': [lambda d: self._progress_hook(d, progress_callback)],  # 修改这里
+            'progress_hooks': [self._progress_hook(progress_callback)],  # 修正这里
             'quiet': True,
             'no_warnings': True,
         }
@@ -231,8 +232,7 @@ class YouTubeDownloader:
             return {
                 'success': False,
                 'error': str(e)
-            }
-    
+            }    
     def _progress_hook(self, d: Dict[str, Any], callback: Optional[Callable] = None):
         """处理下载进度回调"""
         if callback and 'downloaded_bytes' in d:
@@ -255,13 +255,6 @@ class YouTubeDownloader:
                 eta_str = "未知"
                 
             callback(percent, speed_str, eta_str)
-    
-    def cancel_download(self):
-        """取消当前下载任务"""
-        # yt-dlp 不直接支持取消，这里提供一个接口以便未来扩展
-        self.logger.info("尝试取消下载")
-        # 实际取消逻辑需要在具体实现中处理
-        return True
 
 
 class Downloader:

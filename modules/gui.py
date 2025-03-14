@@ -5,6 +5,7 @@ import os
 import threading
 import queue
 import time
+import json
 import customtkinter as ctk
 from typing import Dict, List, Any, Optional, Tuple
 from .downloader import YouTubeDownloader
@@ -23,7 +24,6 @@ class DownloadTask:
         self.task_type = task_type
         self.options = options or {}
         self.save_path = save_path
-        
         self.id = f"{int(time.time())}-{id(self)}"
         self.status = "等待中"  # 等待中、下载中、已完成、已暂停、已取消、失败
         self.progress = 0
@@ -43,6 +43,11 @@ class DownloadTask:
             self.status = "下载中"
         else:
             self.status = "已完成"
+    
+    def cancel(self):
+        """取消任务"""
+        self.status = "已取消"
+        return True
 
 
 class DownloadManager:
@@ -56,11 +61,15 @@ class DownloadManager:
         self.max_concurrent = 2  # 最大并发下载数
         self.running = False
         self.worker_thread = None
+        self.url_history = {}  # 新增：URL历史记录，格式为 {url: task_id}
     
     def add_task(self, task: DownloadTask) -> str:
         """添加下载任务到队列"""
         self.tasks[task.id] = task
         self.task_queue.put(task.id)
+        
+        # 记录URL历史
+        self.url_history[task.url] = task.id
         
         # 如果工作线程未运行，启动它
         if not self.running:
@@ -120,6 +129,9 @@ class DownloadManager:
     def _download_task(self, task: DownloadTask):
         """执行下载任务的线程函数"""
         try:
+            if task.status == "已取消":
+                return
+                
             if task.task_type == 'video':
                 result = self.downloader.download_video(
                     url=task.url,
@@ -165,12 +177,18 @@ class DownloadManager:
         task = self.tasks.get(task_id)
         if not task:
             return False
-        
-        if task.status in ["等待中", "下载中"]:
-            task.status = "已取消"
-            # 实际取消逻辑 - 目前 yt-dlp 不直接支持取消
+            
+        if task.status == "等待中":
+            # 如果任务还在队列中，直接标记为取消
+            task.cancel()
+            return True
+        elif task.status == "下载中":
+            # 如果任务正在下载，标记为取消
+            # 注意：yt-dlp 不直接支持取消，任务会在下一个进度回调时检测到取消状态
+            task.cancel()
             self.downloader.cancel_download()
             return True
+        
         return False
     
     def pause_task(self, task_id: str) -> bool:
@@ -213,14 +231,14 @@ class TaskFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         
         # 创建表头
-        headers = ["标题", "类型", "进度", "状态", "速度", "剩余时间"]
+        headers = ["标题", "类型", "进度", "状态", "速度", "剩余时间", "操作"]
         for i, header in enumerate(headers):
             label = ctk.CTkLabel(self, text=header, font=("Arial", 12, "bold"))
             label.grid(row=0, column=i, padx=5, pady=5, sticky="w")
         
         # 任务列表框架
         self.tasks_frame = ctk.CTkScrollableFrame(self, width=750, height=300)
-        self.tasks_frame.grid(row=1, column=0, columnspan=6, padx=10, pady=10, sticky="nsew")
+        self.tasks_frame.grid(row=1, column=0, columnspan=7, padx=10, pady=10, sticky="nsew")
         
         # 任务行
         self.task_rows = {}
@@ -258,6 +276,14 @@ class TaskFrame(ctk.CTkFrame):
             eta_label = ctk.CTkLabel(self.tasks_frame, text=task.eta, width=70)
             eta_label.grid(row=i, column=5, padx=5, pady=2, sticky="w")
             
+            # 添加操作按钮
+            if task.status in ["等待中", "下载中"]:
+                cancel_btn = ctk.CTkButton(
+                    self.tasks_frame, text="取消", width=60,
+                    command=lambda t=task.id: self.master.cancel_task(t)
+                )
+                cancel_btn.grid(row=i, column=6, padx=5, pady=2)
+            
             # 保存行引用
             self.task_rows[task.id] = {
                 "title": title_label,
@@ -282,14 +308,12 @@ class YouTubeDownloaderGUI(ctk.CTk):
         self.minsize(800, 600)
         
         self.manager = DownloadManager()
-        self.settings = {
-            'save_path': os.path.expanduser('~/Downloads'),
-            'default_resolution': 'best',
-            'default_audio_format': 'mp3',
-            'default_subtitle_lang': 'zh-CN'
-        }
         
-        self.selected_task_id = None
+        # 加载设置
+        self.settings_file = os.path.expanduser('~/Documents/youtube_downloader_settings.json')
+        self.settings = self._load_settings()
+        
+        # 移除 self.selected_task_id
         
         # 创建界面
         self.create_widgets()
@@ -297,6 +321,51 @@ class YouTubeDownloaderGUI(ctk.CTk):
         # 启动更新线程
         self.update_thread = threading.Thread(target=self._update_ui, daemon=True)
         self.update_thread.start()
+    
+    def _load_settings(self):
+        """加载设置"""
+        default_settings = {
+            'save_path': os.path.expanduser('~/Downloads'),
+            'default_resolution': 'best',
+            'default_audio_format': 'mp3',
+            'default_subtitle_lang': 'zh-CN'
+        }
+        
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                    # 确保所有默认设置都存在
+                    for key, value in default_settings.items():
+                        if key not in settings:
+                            settings[key] = value
+                    return settings
+        except Exception as e:
+            print(f"加载设置出错: {str(e)}")
+        
+        return default_settings
+    
+    def _save_settings(self, window, save_path, resolution, audio_format, subtitle_lang):
+        """保存设置"""
+        self.settings['save_path'] = save_path
+        self.settings['default_resolution'] = resolution
+        self.settings['default_audio_format'] = audio_format
+        self.settings['default_subtitle_lang'] = subtitle_lang
+        
+        # 更新主窗口中的保存路径
+        self.save_path_entry.delete(0, 'end')
+        self.save_path_entry.insert(0, save_path)
+        
+        # 保存到文件
+        try:
+            os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存设置出错: {str(e)}")
+        
+        # 关闭设置窗口
+        window.destroy()
     
     def create_widgets(self):
         """创建界面组件"""
@@ -339,23 +408,24 @@ class YouTubeDownloaderGUI(ctk.CTk):
         control_frame = ctk.CTkFrame(self)
         control_frame.pack(fill="x", padx=10, pady=10)
         
-        self.pause_btn = ctk.CTkButton(
-            control_frame, text="暂停", 
-            command=self.pause_task, state="disabled"
-        )
-        self.pause_btn.pack(side="left", padx=5)
-        
-        self.resume_btn = ctk.CTkButton(
-            control_frame, text="恢复", 
-            command=self.resume_task, state="disabled"
-        )
-        self.resume_btn.pack(side="left", padx=5)
-        
-        self.cancel_btn = ctk.CTkButton(
-            control_frame, text="取消", 
-            command=self.cancel_task, state="disabled"
-        )
-        self.cancel_btn.pack(side="left", padx=5)
+        # 移除这三个按钮
+        # self.pause_btn = ctk.CTkButton(
+        #     control_frame, text="暂停", 
+        #     command=self.pause_task, state="disabled"
+        # )
+        # self.pause_btn.pack(side="left", padx=5)
+        # 
+        # self.resume_btn = ctk.CTkButton(
+        #     control_frame, text="恢复", 
+        #     command=self.resume_task, state="disabled"
+        # )
+        # self.resume_btn.pack(side="left", padx=5)
+        # 
+        # self.cancel_btn = ctk.CTkButton(
+        #     control_frame, text="取消", 
+        #     command=self.cancel_task, state="disabled"
+        # )
+        # self.cancel_btn.pack(side="left", padx=5)
         
         open_folder_btn = ctk.CTkButton(
             control_frame, text="打开文件夹", 
@@ -435,15 +505,30 @@ class YouTubeDownloaderGUI(ctk.CTk):
         if self.selected_task_id:
             self.manager.resume_task(self.selected_task_id)
     
-    def cancel_task(self):
+    def cancel_task(self, task_id=None):
         """取消选中的任务"""
-        if self.selected_task_id:
-            self.manager.cancel_task(self.selected_task_id)
+        if task_id is None:
+            task_id = self.selected_task_id
+            
+        if task_id:
+            if self.manager.cancel_task(task_id):
+                print(f"任务已取消: {task_id}")
+            else:
+                print(f"无法取消任务: {task_id}")
     
     def open_folder(self):
         """打开下载文件夹"""
         import subprocess
-        subprocess.run(["open", self.settings['save_path']])
+        import platform
+        
+        path = self.settings['save_path']
+        
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", path])
+        else:  # Linux
+            subprocess.run(["xdg-open", path])
     
     def browse_save_path(self):
         """浏览并选择保存路径"""
@@ -454,6 +539,14 @@ class YouTubeDownloaderGUI(ctk.CTk):
             self.settings['save_path'] = folder
             self.save_path_entry.delete(0, 'end')
             self.save_path_entry.insert(0, folder)
+            
+            # 保存设置
+            try:
+                os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+                with open(self.settings_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"保存设置出错: {str(e)}")
     
     def show_settings_window(self):
         """显示设置窗口"""
@@ -553,17 +646,3 @@ class YouTubeDownloaderGUI(ctk.CTk):
         if folder:
             entry_widget.delete(0, 'end')
             entry_widget.insert(0, folder)
-    
-    def _save_settings(self, window, save_path, resolution, audio_format, subtitle_lang):
-        """保存设置"""
-        self.settings['save_path'] = save_path
-        self.settings['default_resolution'] = resolution
-        self.settings['default_audio_format'] = audio_format
-        self.settings['default_subtitle_lang'] = subtitle_lang
-        
-        # 更新主窗口中的保存路径
-        self.save_path_entry.delete(0, 'end')
-        self.save_path_entry.insert(0, save_path)
-        
-        # 关闭设置窗口
-        window.destroy()

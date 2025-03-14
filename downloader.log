@@ -1,2 +1,13 @@
 2025-03-13 17:33:06,549 - modules.downloader - INFO - 下载完成: /Users/alexchen/Downloads/Anthropic CEO： ＂90% of Code Will be Written by AI in 6 months＂.f625.mp4
 2025-03-13 17:33:06,880 - modules.downloader - INFO - 下载完成: /Users/alexchen/Downloads/Anthropic CEO： ＂90% of Code Will be Written by AI in 6 months＂.f140.m4a
+2025-03-13 23:54:14,190 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:54:15,752 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:54:16,291 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:54:16,488 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:54:16,665 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:54:17,715 - modules.downloader - INFO - 尝试取消下载
+2025-03-13 23:55:10,574 - modules.downloader - INFO - 尝试取消下载
+2025-03-14 00:03:07,217 - modules.downloader - ERROR - 视频下载失败: 'NoneType' object is not callable
+2025-03-14 00:05:02,384 - modules.downloader - ERROR - 视频下载失败: 'NoneType' object is not callable
+2025-03-14 00:08:18,104 - modules.downloader - INFO - 下载完成: /Users/alexchen/Downloads/【AI动态】每日科技新闻汇总 ｜ 20250314 ｜ 斯坦福开源OctoTools框架 ｜ 清华联合博世推出Chameleon ｜ OpenAI推出智能体构建神器 ｜ 清华团队开源RIFLEx.f609.mp4
+2025-03-14 00:08:18,985 - modules.downloader - INFO - 下载完成: /Users/alexchen/Downloads/【AI动态】每日科技新闻汇总 ｜ 20250314 ｜ 斯坦福开源OctoTools框架 ｜ 清华联合博世推出Chameleon ｜ OpenAI推出智能体构建神器 ｜ 清华团队开源RIFLEx.f140.m4a
