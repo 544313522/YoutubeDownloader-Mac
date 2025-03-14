@@ -77,7 +77,7 @@ class YouTubeDownloader:
         ydl_opts = {
             'format': format_spec,
             'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),
-            'progress_hooks': [self._progress_hook(progress_callback)],
+            'progress_hooks': [lambda d: self._progress_hook(d, progress_callback)],  # 修改这里
             'quiet': True,
             'no_warnings': True,
         }
