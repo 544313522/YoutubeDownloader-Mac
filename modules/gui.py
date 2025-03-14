@@ -230,15 +230,31 @@ class TaskFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
         
+        # 配置网格布局
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
         # 创建表头
-        headers = ["标题", "类型", "进度", "状态", "速度", "剩余时间", "操作"]
-        for i, header in enumerate(headers):
-            label = ctk.CTkLabel(self, text=header, font=("Arial", 12, "bold"))
+        headers_frame = ctk.CTkFrame(self)
+        headers_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(5,0))
+        
+        headers = [
+            ("标题", 200), 
+            ("类型", 80), 
+            ("进度", 100), 
+            ("状态", 80), 
+            ("速度", 100), 
+            ("剩余时间", 100), 
+            ("操作", 80)
+        ]
+        
+        for i, (header, width) in enumerate(headers):
+            label = ctk.CTkLabel(headers_frame, text=header, width=width)
             label.grid(row=0, column=i, padx=5, pady=5, sticky="w")
         
         # 任务列表框架
-        self.tasks_frame = ctk.CTkScrollableFrame(self, width=750, height=300)
-        self.tasks_frame.grid(row=1, column=0, columnspan=7, padx=10, pady=10, sticky="nsew")
+        self.tasks_frame = ctk.CTkScrollableFrame(self)
+        self.tasks_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         
         # 任务行
         self.task_rows = {}
@@ -376,24 +392,31 @@ class YouTubeDownloaderGUI(ctk.CTk):
         url_label = ctk.CTkLabel(input_frame, text="YouTube 链接:")
         url_label.pack(side="left", padx=5)
         
-        self.url_entry = ctk.CTkEntry(input_frame, width=400)
+        self.url_entry = ctk.CTkEntry(input_frame, width=600)  # 加宽输入框
         self.url_entry.pack(side="left", padx=5)
         
+        # 下载按钮区（新的frame）
+        button_frame = ctk.CTkFrame(self)
+        button_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
         download_video_btn = ctk.CTkButton(
-            input_frame, text="下载视频", 
-            command=lambda: self.add_download_task("video")
+            button_frame, text="下载视频", 
+            command=lambda: self.add_download_task("video"),
+            width=120  # 统一按钮宽度
         )
         download_video_btn.pack(side="left", padx=5)
         
         download_audio_btn = ctk.CTkButton(
-            input_frame, text="下载音频", 
-            command=lambda: self.add_download_task("audio")
+            button_frame, text="下载音频", 
+            command=lambda: self.add_download_task("audio"),
+            width=120
         )
         download_audio_btn.pack(side="left", padx=5)
         
         download_subtitle_btn = ctk.CTkButton(
-            input_frame, text="下载字幕", 
-            command=lambda: self.add_download_task("subtitle")
+            button_frame, text="下载字幕", 
+            command=lambda: self.add_download_task("subtitle"),
+            width=120
         )
         download_subtitle_btn.pack(side="left", padx=5)
         
@@ -404,34 +427,7 @@ class YouTubeDownloaderGUI(ctk.CTk):
         self.task_frame = TaskFrame(self)
         self.task_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # 操作区
-        control_frame = ctk.CTkFrame(self)
-        control_frame.pack(fill="x", padx=10, pady=10)
-        
-        # 移除这三个按钮
-        # self.pause_btn = ctk.CTkButton(
-        #     control_frame, text="暂停", 
-        #     command=self.pause_task, state="disabled"
-        # )
-        # self.pause_btn.pack(side="left", padx=5)
-        # 
-        # self.resume_btn = ctk.CTkButton(
-        #     control_frame, text="恢复", 
-        #     command=self.resume_task, state="disabled"
-        # )
-        # self.resume_btn.pack(side="left", padx=5)
-        # 
-        # self.cancel_btn = ctk.CTkButton(
-        #     control_frame, text="取消", 
-        #     command=self.cancel_task, state="disabled"
-        # )
-        # self.cancel_btn.pack(side="left", padx=5)
-        
-        open_folder_btn = ctk.CTkButton(
-            control_frame, text="打开文件夹", 
-            command=self.open_folder
-        )
-        open_folder_btn.pack(side="left", padx=5)
+        # 删除整个 control_frame 部分
         
         # 设置区
         settings_frame = ctk.CTkFrame(self)
@@ -444,8 +440,14 @@ class YouTubeDownloaderGUI(ctk.CTk):
         self.save_path_entry.pack(side="left", padx=5)
         self.save_path_entry.insert(0, self.settings['save_path'])
         
+        open_folder_btn = ctk.CTkButton(
+            settings_frame, text="打开文件夹", 
+            command=self.open_folder
+        )
+        open_folder_btn.pack(side="left", padx=5)
+        
         browse_btn = ctk.CTkButton(
-            settings_frame, text="浏览", 
+            settings_frame, text="更改保存路径", 
             command=self.browse_save_path
         )
         browse_btn.pack(side="left", padx=5)
@@ -572,7 +574,7 @@ class YouTubeDownloaderGUI(ctk.CTk):
         path_entry.insert(0, self.settings['save_path'])
         
         path_btn = ctk.CTkButton(
-            path_frame, text="浏览", 
+            path_frame, text="更改路径", 
             command=lambda: self._browse_path_in_settings(path_entry)
         )
         path_btn.pack(side="left", padx=5)
